@@ -17,7 +17,8 @@ PORTS_DB = {
     443: {"service": "HTTPS", "protocol": "TCP", "risk": "Bajo", "desc": "Trafico web cifrado SSL/TLS."},
     445: {"service": "SMB", "protocol": "TCP", "risk": "Alto", "desc": "Comparticion de archivos Windows."},
     3306: {"service": "MySQL", "protocol": "TCP", "risk": "Medio", "desc": "Base de datos MySQL."},
-    3389: {"service": "RDP", "protocol": "TCP", "risk": "Alto", "desc": "Remote Desktop Protocol."}
+    3389: {"service": "RDP", "protocol": "TCP", "risk": "Alto", "desc": "Remote Desktop Protocol."},
+    8080: {"service": "HTTP-ALT", "protocol": "TCP", "risk": "Medio", "desc": "Servidor web alternativo."}
 }
 
 @app.get("/")
