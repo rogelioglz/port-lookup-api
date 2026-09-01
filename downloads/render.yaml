@@ -1,0 +1,16 @@
+# Exported from Render on 2026-09-01T04:29:56Z
+version: "1"
+projects:
+- name: My project
+  environments:
+  - name: Production
+    services:
+    - type: web
+      name: port-lookup-api
+      runtime: python
+      repo: https://github.com/rogelioglz/port-lookup-api
+      plan: free
+      region: oregon
+      buildCommand: pip install -r requirements.txt
+      startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+      autoDeployTrigger: "off"
