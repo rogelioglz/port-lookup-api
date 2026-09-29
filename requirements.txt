@@ -3,3 +3,6 @@ uvicorn==0.52.4
 pydantic==1.10.26
 starlette==0.27.0
 anyio==4.14.2
+stripe
+python-dotenv
+sqlalchemy
