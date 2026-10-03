@@ -44,8 +44,9 @@ Example response:
 }
 Pricing
 SaaS Plans
-Starter: $29/month
-Pro: $99/month
+Starter: $99 MXN/month
+Pro: $299 MXN/month
+Business: $599 MXN/month
 Enterprise: Custom pricing
 Commercial License
 Commercial License: $499
@@ -70,3 +71,43 @@ For business inquiries, custom integrations, or licensing:
 
 Email: sales@yourcompany.com
 Website: https://yourcompany.com
+
+Stripe Billing Setup
+--------------------
+
+The checkout creates monthly subscriptions in MXN:
+
+- Starter: $99 MXN/month, 1,000 port lookups per billing cycle.
+- Pro: $299 MXN/month, 5,000 port lookups per billing cycle.
+- Business remains available through the API at the configured $599 MXN/month.
+
+Configure these environment variables in Render (or your hosting provider):
+
+- `STRIPE_SECRET_KEY`: Stripe secret API key.
+- `STRIPE_WEBHOOK_SECRET`: signing secret for the webhook endpoint.
+- `PUBLIC_BASE_URL`: public base URL of this API, for example
+  `https://port-lookup-api-sb9w.onrender.com`.
+- `DATABASE_URL`: persistent database URL. SQLite is suitable only when the
+  host provides persistent disk storage.
+- `ADMIN_KEY`: secret used by `/admin/stats`.
+
+In Stripe, add a webhook pointing to
+`https://<your-api-domain>/stripe-webhook` and subscribe it to:
+
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+
+The static page starts checkout at `/checkout?plan=starter` or
+`/checkout?plan=pro`. After payment, the confirmation endpoint returns the
+subscription status and API Key. Renewal invoices reset the plan's monthly
+query allowance; canceled, paused, or unpaid subscriptions disable their API
+Key. Failed renewal payments are marked `past_due` while Stripe retries
+payment.
+
+To let a customer manage or cancel their subscription, enable the Stripe
+Customer Portal in the Stripe Dashboard, then call `POST /billing-portal` with
+their API key in the `X-API-Key` header. The response contains the portal URL.

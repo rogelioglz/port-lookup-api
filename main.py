@@ -6,7 +6,16 @@ import stripe
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Integer,
+    String,
+    create_engine,
+    inspect,
+    text,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
@@ -19,7 +28,7 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 PUBLIC_BASE_URL = os.getenv(
     "PUBLIC_BASE_URL",
-    "https://much-plane-silver-wrist.trycloudflare.com"
+    "https://port-lookup-api-sb9w.onrender.com"
 )
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -77,6 +86,8 @@ class Order(Base):
         nullable=False,
         index=True
     )
+    stripe_subscription_id = Column(String(255), nullable=True, index=True)
+    stripe_customer_id = Column(String(255), nullable=True)
     plan = Column(String(50), nullable=False)
     amount = Column(Integer, nullable=False)
     currency = Column(String(10), default="mxn")
@@ -86,6 +97,19 @@ class Order(Base):
 
 
 Base.metadata.create_all(bind=engine)
+
+# `create_all` does not update existing tables. Add billing fields for
+# installations that already have an orders table.
+order_columns = {
+    column["name"]
+    for column in inspect(engine).get_columns("orders")
+}
+with engine.begin() as connection:
+    for column_name in ("stripe_subscription_id", "stripe_customer_id"):
+        if column_name not in order_columns:
+            connection.execute(
+                text(f"ALTER TABLE orders ADD COLUMN {column_name} VARCHAR(255)")
+            )
 
 # ============================================================
 # FASTAPI
@@ -101,20 +125,6 @@ app = FastAPI(
 # ============================================================
 
 PORTS_DB = {
-<<<<<<< Updated upstream
-    20: {"service": "FTP-DATA", "protocol": "TCP", "risk": "Medio", "desc": "Transferencia de datos FTP no cifrada."},
-    21: {"service": "FTP", "protocol": "TCP", "risk": "Alto", "desc": "Control FTP."},
-    22: {"service": "SSH", "protocol": "TCP", "risk": "Bajo", "desc": "Secure Shell."},
-    23: {"service": "TELNET", "protocol": "TCP", "risk": "Alto", "desc": "Consola remota sin cifrado."},
-    25: {"service": "SMTP", "protocol": "TCP", "risk": "Medio", "desc": "Envio de correo."},
-    53: {"service": "DNS", "protocol": "TCP/UDP", "risk": "Bajo", "desc": "Domain Name System."},
-    80: {"service": "HTTP", "protocol": "TCP", "risk": "Medio", "desc": "Trafico web no cifrado."},
-    443: {"service": "HTTPS", "protocol": "TCP", "risk": "Bajo", "desc": "Trafico web cifrado SSL/TLS."},
-    445: {"service": "SMB", "protocol": "TCP", "risk": "Alto", "desc": "Comparticion de archivos Windows."},
-    3306: {"service": "MySQL", "protocol": "TCP", "risk": "Medio", "desc": "Base de datos MySQL."},
-    3389: {"service": "RDP", "protocol": "TCP", "risk": "Alto", "desc": "Remote Desktop Protocol."},
-    8080: {"service": "HTTP-ALT", "protocol": "TCP", "risk": "Medio", "desc": "Servidor web alternativo."}
-=======
     20: {
         "service": "FTP-Data",
         "protocol": "TCP",
@@ -170,7 +180,6 @@ PORTS_DB = {
         "protocol": "TCP",
         "description": "Remote Desktop Protocol"
     }
->>>>>>> Stashed changes
 }
 
 # ============================================================
@@ -360,7 +369,7 @@ def create_checkout(plan: str = "starter"):
 
         session = stripe.checkout.Session.create(
 
-            mode="payment",
+            mode="subscription",
 
             line_items=[
                 {
@@ -380,7 +389,10 @@ def create_checkout(plan: str = "starter"):
 
                         "unit_amount": (
                             selected["price_mxn"] * 100
-                        )
+                        ),
+                        "recurring": {
+                            "interval": "month"
+                        }
                     },
 
                     "quantity": 1
@@ -389,6 +401,11 @@ def create_checkout(plan: str = "starter"):
 
             metadata={
                 "plan": plan
+            },
+            subscription_data={
+                "metadata": {
+                    "plan": plan
+                }
             },
 
             success_url=(
@@ -436,6 +453,13 @@ def create_checkout(plan: str = "starter"):
             detail=str(e)
         )
 
+
+@app.get("/checkout")
+def redirect_to_checkout(plan: str = "starter"):
+    checkout = create_checkout(plan)
+    return RedirectResponse(checkout["checkout_url"], status_code=303)
+
+
 # Alias
 @app.post("/create-checkout-session")
 def create_checkout_session(plan: str = "starter"):
@@ -449,10 +473,10 @@ def create_checkout_session(plan: str = "starter"):
 def checkout_success(session_id: str | None = None):
 
     if not session_id:
-        return {
-            "ok": True,
-            "message": "Pago recibido"
-        }
+        raise HTTPException(
+            status_code=400,
+            detail="Falta session_id"
+        )
 
     db = SessionLocal()
 
@@ -463,16 +487,21 @@ def checkout_success(session_id: str | None = None):
         ).first()
 
         if not order:
-            return {
-                "ok": True,
-                "message": "Pago recibido"
-            }
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontró la orden"
+            )
 
         return {
             "ok": True,
-            "message": "Pago recibido",
+            "message": (
+                "Suscripción activa"
+                if order.status == "paid"
+                else "El pago está pendiente de confirmación"
+            ),
             "status": order.status,
-            "plan": order.plan
+            "plan": order.plan,
+            "api_key": order.api_key
         }
 
     finally:
@@ -489,6 +518,69 @@ def checkout_cancel():
         "ok": False,
         "message": "El pago fue cancelado"
     }
+
+
+def invoice_subscription_id(invoice):
+    subscription_id = invoice.get("subscription")
+
+    if subscription_id:
+        return subscription_id
+
+    parent = invoice.get("parent") or {}
+    subscription_details = parent.get("subscription_details") or {}
+    return subscription_details.get("subscription")
+
+
+@app.post("/billing-portal")
+def create_billing_portal(request: Request):
+    api_key = request.headers.get("X-API-Key")
+
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Falta el header X-API-Key"
+        )
+
+    db = SessionLocal()
+
+    try:
+        account = db.query(APIKey).filter(
+            APIKey.key == api_key,
+            APIKey.active == True
+        ).first()
+
+        if not account:
+            raise HTTPException(
+                status_code=401,
+                detail="API Key inválida"
+            )
+
+        order = db.query(Order).filter(
+            Order.api_key == api_key,
+            Order.stripe_customer_id.isnot(None)
+        ).order_by(Order.created_at.desc()).first()
+
+        if not order:
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontró una suscripción activa para esta API Key"
+            )
+
+        try:
+            portal_session = stripe.billing_portal.Session.create(
+                customer=order.stripe_customer_id,
+                return_url=PUBLIC_BASE_URL
+            )
+        except stripe.StripeError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"No se pudo abrir el portal de facturación: {e}"
+            )
+
+        return {"billing_portal_url": portal_session.url}
+
+    finally:
+        db.close()
 
 # ============================================================
 # STRIPE WEBHOOK
@@ -540,7 +632,7 @@ async def stripe_webhook(request: Request):
     event_type = event["type"]
 
     # --------------------------------------------------------
-    # PAGO COMPLETADO
+    # SUSCRIPCIÓN PAGADA
     # --------------------------------------------------------
 
     if event_type in [
@@ -555,6 +647,15 @@ async def stripe_webhook(request: Request):
         if not session_id:
             return {
                 "received": True
+            }
+
+        if (
+            event_type == "checkout.session.completed"
+            and session.get("payment_status") not in ("paid", "no_payment_required")
+        ):
+            return {
+                "received": True,
+                "message": "Esperando confirmación del pago"
             }
 
         db = SessionLocal()
@@ -609,11 +710,97 @@ async def stripe_webhook(request: Request):
 
             order.status = "paid"
             order.api_key = new_api_key
+            order.stripe_subscription_id = session.get("subscription")
+            order.stripe_customer_id = session.get("customer")
 
             db.commit()
 
         finally:
             db.close()
+
+    elif event_type == "invoice.paid":
+        invoice = event["data"]["object"]
+        subscription_id = invoice_subscription_id(invoice)
+
+        if subscription_id:
+            db = SessionLocal()
+
+            try:
+                order = db.query(Order).filter(
+                    Order.stripe_subscription_id == subscription_id
+                ).first()
+
+                if order:
+                    order.status = "paid"
+                    account = db.query(APIKey).filter(
+                        APIKey.key == order.api_key
+                    ).first()
+
+                    if (
+                        account
+                        and invoice.get("billing_reason") == "subscription_cycle"
+                    ):
+                        account.queries_used = 0
+
+                    db.commit()
+            finally:
+                db.close()
+
+    elif event_type == "invoice.payment_failed":
+        invoice = event["data"]["object"]
+        subscription_id = invoice_subscription_id(invoice)
+
+        if subscription_id:
+            db = SessionLocal()
+
+            try:
+                order = db.query(Order).filter(
+                    Order.stripe_subscription_id == subscription_id
+                ).first()
+
+                if order:
+                    order.status = "past_due"
+                    db.commit()
+            finally:
+                db.close()
+
+    elif event_type in (
+        "customer.subscription.deleted",
+        "customer.subscription.updated",
+    ):
+        subscription = event["data"]["object"]
+        subscription_id = subscription.get("id")
+
+        inactive_statuses = {
+            "canceled",
+            "incomplete_expired",
+            "paused",
+            "unpaid",
+        }
+
+        if subscription_id and (
+            event_type == "customer.subscription.deleted"
+            or subscription.get("status") in inactive_statuses
+        ):
+            db = SessionLocal()
+
+            try:
+                order = db.query(Order).filter(
+                    Order.stripe_subscription_id == subscription_id
+                ).first()
+
+                if order:
+                    order.status = subscription.get("status", "canceled")
+                    account = db.query(APIKey).filter(
+                        APIKey.key == order.api_key
+                    ).first()
+
+                    if account:
+                        account.active = False
+
+                    db.commit()
+            finally:
+                db.close()
 
     return {
         "received": True
@@ -660,11 +847,6 @@ def admin_stats(request: Request):
 
     finally:
         db.close()
-
-
-
-
-
 
 
 
