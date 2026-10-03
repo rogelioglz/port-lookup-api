@@ -44,8 +44,8 @@ Example response:
 }
 Pricing
 SaaS Plans
-Starter: $99 MXN/month
-Pro: $299 MXN/month
+Starter: $29 USD/month
+Pro: $99 USD/month
 Business: $599 MXN/month
 Enterprise: Custom pricing
 Commercial License
@@ -75,11 +75,11 @@ Website: https://yourcompany.com
 Stripe Billing Setup
 --------------------
 
-The checkout creates monthly subscriptions in MXN:
+The checkout creates monthly subscriptions:
 
-- Starter: $99 MXN/month, 1,000 port lookups per billing cycle.
-- Pro: $299 MXN/month, 5,000 port lookups per billing cycle.
-- Business remains available through the API at the configured $599 MXN/month.
+- Starter: $29 USD/month, 1,000 port lookups per billing cycle.
+- Pro: $99 USD/month, 5,000 port lookups per billing cycle.
+- Business: $599 MXN/month, 20,000 port lookups per billing cycle.
 
 Configure these environment variables in Render (or your hosting provider):
 
@@ -102,8 +102,11 @@ In Stripe, add a webhook pointing to
 - `customer.subscription.deleted`
 
 The static page starts checkout at `/checkout?plan=starter` or
-`/checkout?plan=pro`. After payment, the confirmation endpoint returns the
-subscription status and API Key. Renewal invoices reset the plan's monthly
+`/checkout?plan=pro`. Stripe collects payment details and charges the first
+monthly payment when the customer completes Checkout; the subscription saves
+the payment method for automatic renewal charges. No charge is made merely by
+visiting the checkout page. After payment, the confirmation endpoint returns
+the subscription status and API Key. Renewal invoices reset the plan's monthly
 query allowance; canceled, paused, or unpaid subscriptions disable their API
 Key. Failed renewal payments are marked `past_due` while Stripe retries
 payment.

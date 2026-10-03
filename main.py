@@ -189,17 +189,20 @@ PORTS_DB = {
 PLANS = {
     "starter": {
         "name": "Starter",
-        "price_mxn": 99,
+        "price": 29,
+        "currency": "usd",
         "queries": 1000
     },
     "pro": {
         "name": "Pro",
-        "price_mxn": 299,
+        "price": 99,
+        "currency": "usd",
         "queries": 5000
     },
     "business": {
         "name": "Business",
-        "price_mxn": 599,
+        "price": 599,
+        "currency": "mxn",
         "queries": 20000
     }
 }
@@ -233,7 +236,6 @@ def health():
 @app.get("/plans")
 def get_plans():
     return {
-        "currency": "MXN",
         "plans": PLANS
     }
 
@@ -370,11 +372,12 @@ def create_checkout(plan: str = "starter"):
         session = stripe.checkout.Session.create(
 
             mode="subscription",
+            payment_method_collection="always",
 
             line_items=[
                 {
                     "price_data": {
-                        "currency": "mxn",
+                        "currency": selected["currency"],
 
                         "product_data": {
                             "name": (
@@ -388,7 +391,7 @@ def create_checkout(plan: str = "starter"):
                         },
 
                         "unit_amount": (
-                            selected["price_mxn"] * 100
+                            selected["price"] * 100
                         ),
                         "recurring": {
                             "interval": "month"
@@ -405,7 +408,10 @@ def create_checkout(plan: str = "starter"):
             subscription_data={
                 "metadata": {
                     "plan": plan
-                }
+                },
+                "payment_settings": {
+                    "save_default_payment_method": "on_subscription"
+                },
             },
 
             success_url=(
@@ -427,8 +433,8 @@ def create_checkout(plan: str = "starter"):
             order = Order(
                 stripe_session_id=session.id,
                 plan=plan,
-                amount=selected["price_mxn"],
-                currency="mxn",
+                amount=selected["price"],
+                currency=selected["currency"],
                 status="pending"
             )
 
@@ -441,7 +447,8 @@ def create_checkout(plan: str = "starter"):
         return {
             "ok": True,
             "plan": plan,
-            "price_mxn": selected["price_mxn"],
+            "price": selected["price"],
+            "currency": selected["currency"].upper(),
             "checkout_session_id": session.id,
             "checkout_url": session.url
         }
@@ -847,7 +854,6 @@ def admin_stats(request: Request):
 
     finally:
         db.close()
-
 
 
 
