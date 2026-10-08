@@ -19,7 +19,7 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 PUBLIC_BASE_URL = os.getenv(
     "PUBLIC_BASE_URL",
-    "https://much-plane-silver-wrist.trycloudflare.com"
+    "https://port-lookup-api-sb9w.onrender.com"
 )
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -101,7 +101,6 @@ app = FastAPI(
 # ============================================================
 
 PORTS_DB = {
-<<<<<<< Updated upstream
     20: {"service": "FTP-DATA", "protocol": "TCP", "risk": "Medio", "desc": "Transferencia de datos FTP no cifrada."},
     21: {"service": "FTP", "protocol": "TCP", "risk": "Alto", "desc": "Control FTP."},
     22: {"service": "SSH", "protocol": "TCP", "risk": "Bajo", "desc": "Secure Shell."},
@@ -114,65 +113,7 @@ PORTS_DB = {
     3306: {"service": "MySQL", "protocol": "TCP", "risk": "Medio", "desc": "Base de datos MySQL."},
     3389: {"service": "RDP", "protocol": "TCP", "risk": "Alto", "desc": "Remote Desktop Protocol."},
     8080: {"service": "HTTP-ALT", "protocol": "TCP", "risk": "Medio", "desc": "Servidor web alternativo."}
-=======
-    20: {
-        "service": "FTP-Data",
-        "protocol": "TCP",
-        "description": "FTP data transfer"
-    },
-    21: {
-        "service": "FTP",
-        "protocol": "TCP",
-        "description": "File Transfer Protocol"
-    },
-    22: {
-        "service": "SSH",
-        "protocol": "TCP",
-        "description": "Secure Shell"
-    },
-    23: {
-        "service": "Telnet",
-        "protocol": "TCP",
-        "description": "Telnet"
-    },
-    25: {
-        "service": "SMTP",
-        "protocol": "TCP",
-        "description": "Simple Mail Transfer Protocol"
-    },
-    53: {
-        "service": "DNS",
-        "protocol": "TCP/UDP",
-        "description": "Domain Name System"
-    },
-    80: {
-        "service": "HTTP",
-        "protocol": "TCP",
-        "description": "Hypertext Transfer Protocol"
-    },
-    443: {
-        "service": "HTTPS",
-        "protocol": "TCP",
-        "description": "Secure HTTP"
-    },
-    445: {
-        "service": "SMB",
-        "protocol": "TCP",
-        "description": "Server Message Block"
-    },
-    3306: {
-        "service": "MySQL",
-        "protocol": "TCP",
-        "description": "MySQL database"
-    },
-    3389: {
-        "service": "RDP",
-        "protocol": "TCP",
-        "description": "Remote Desktop Protocol"
-    }
->>>>>>> Stashed changes
 }
-
 # ============================================================
 # PLANES
 # ============================================================
