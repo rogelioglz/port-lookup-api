@@ -114,6 +114,12 @@ PORTS_DB = {
     3389: {"service": "RDP", "protocol": "TCP", "risk": "Alto", "desc": "Remote Desktop Protocol."},
     8080: {"service": "HTTP-ALT", "protocol": "TCP", "risk": "Medio", "desc": "Servidor web alternativo."}
 }
+
+# Compatibilidad: normaliza cualquier clave anterior 'desc' a 'description'.
+for port_info in PORTS_DB.values():
+    if "description" not in port_info and "desc" in port_info:
+        port_info["description"] = port_info["desc"]
+
 # ============================================================
 # PLANES
 # ============================================================
@@ -227,7 +233,7 @@ def get_port(port_number: int, request: Request):
             "port": port_number,
             "service": result["service"],
             "protocol": result["protocol"],
-            "description": result["description"],
+            "description": result.get("description", result.get("desc", "")),
             "queries_used": account.queries_used,
             "queries_remaining": (
                 account.queries_limit -
@@ -601,34 +607,3 @@ def admin_stats(request: Request):
 
     finally:
         db.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
