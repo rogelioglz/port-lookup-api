@@ -114,8 +114,6 @@ PORTS_DB = {
     3389: {"service": "RDP", "protocol": "TCP", "risk": "Alto", "desc": "Remote Desktop Protocol."},
     8080: {"service": "HTTP-ALT", "protocol": "TCP", "risk": "Medio", "desc": "Servidor web alternativo."}
 }
-
-# Compatibilidad: normaliza cualquier clave anterior 'desc' a 'description'.
 for port_info in PORTS_DB.values():
     if "description" not in port_info and "desc" in port_info:
         port_info["description"] = port_info["desc"]
@@ -304,56 +302,30 @@ def create_checkout(plan: str = "starter"):
     selected = PLANS[plan]
 
     try:
-
         session = stripe.checkout.Session.create(
-
-            mode="payment",
-
+            mode="subscription",
             line_items=[
                 {
                     "price_data": {
                         "currency": "mxn",
-
+                        "unit_amount": int(selected["price_mxn"] * 100),
+                        "recurring": {"interval": "month"},
                         "product_data": {
-                            "name": (
-                                f"Port Lookup API - "
-                                f"{selected['name']}"
-                            ),
-                            "description": (
-                                f"{selected['queries']} "
-                                "consultas de puertos"
-                            )
-                        },
-
-                        "unit_amount": (
-                            selected["price_mxn"] * 100
-                        )
+                            "name": f"Port Lookup API - {selected['name']}",
+                            "description": f"{selected['queries']} consultas de puertos"
+                        }
                     },
-
                     "quantity": 1
                 }
             ],
-
-            metadata={
-                "plan": plan
-            },
-
-            success_url=(
-                f"{PUBLIC_BASE_URL}"
-                "/checkout/success"
-                "?session_id={CHECKOUT_SESSION_ID}"
-            ),
-
-            cancel_url=(
-                f"{PUBLIC_BASE_URL}"
-                "/checkout/cancel"
-            )
+            metadata={"plan": plan},
+            success_url=f"{PUBLIC_BASE_URL}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{PUBLIC_BASE_URL}/checkout/cancel"
         )
 
         db = SessionLocal()
 
         try:
-
             order = Order(
                 stripe_session_id=session.id,
                 plan=plan,
@@ -361,10 +333,8 @@ def create_checkout(plan: str = "starter"):
                 currency="mxn",
                 status="pending"
             )
-
             db.add(order)
             db.commit()
-
         finally:
             db.close()
 
@@ -377,7 +347,6 @@ def create_checkout(plan: str = "starter"):
         }
 
     except stripe.StripeError as e:
-
         raise HTTPException(
             status_code=500,
             detail=str(e)
@@ -404,7 +373,6 @@ def checkout_success(session_id: str | None = None):
     db = SessionLocal()
 
     try:
-
         order = db.query(Order).filter(
             Order.stripe_session_id == session_id
         ).first()
@@ -431,7 +399,6 @@ def checkout_success(session_id: str | None = None):
 
 @app.get("/checkout/cancel")
 def checkout_cancel():
-
     return {
         "ok": False,
         "message": "El pago fue cancelado"
@@ -445,105 +412,56 @@ def checkout_cancel():
 async def stripe_webhook(request: Request):
 
     payload = await request.body()
-
-    signature = request.headers.get(
-        "stripe-signature"
-    )
+    signature = request.headers.get("stripe-signature")
 
     if not signature:
-        raise HTTPException(
-            status_code=400,
-            detail="Falta Stripe-Signature"
-        )
+        raise HTTPException(status_code=400, detail="Falta Stripe-Signature")
 
     if not STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(
-            status_code=500,
-            detail="Falta STRIPE_WEBHOOK_SECRET"
-        )
+        raise HTTPException(status_code=500, detail="Falta STRIPE_WEBHOOK_SECRET")
 
     try:
-
         event = stripe.Webhook.construct_event(
             payload,
             signature,
             STRIPE_WEBHOOK_SECRET
         )
-
     except ValueError:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Payload inválido"
-        )
-
+        raise HTTPException(status_code=400, detail="Payload inválido")
     except stripe.error.SignatureVerificationError:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Firma Stripe inválida"
-        )
+        raise HTTPException(status_code=400, detail="Firma Stripe inválida")
 
     event_type = event["type"]
-
-    # --------------------------------------------------------
-    # PAGO COMPLETADO
-    # --------------------------------------------------------
 
     if event_type in [
         "checkout.session.completed",
         "checkout.session.async_payment_succeeded"
     ]:
-
         session = event["data"]["object"]
-
         session_id = session.get("id")
 
         if not session_id:
-            return {
-                "received": True
-            }
+            return {"received": True}
 
         db = SessionLocal()
-
         try:
-
             order = db.query(Order).filter(
                 Order.stripe_session_id == session_id
             ).first()
 
             if not order:
-                return {
-                    "received": True,
-                    "message": "Orden no encontrada"
-                }
+                return {"received": True, "message": "Orden no encontrada"}
 
-            # Idempotencia:
-            # si ya fue procesada, no crear otra API key
             if order.status == "paid" and order.api_key:
-
-                return {
-                    "received": True,
-                    "message": "Orden ya procesada"
-                }
+                return {"received": True, "message": "Orden ya procesada"}
 
             plan = PLANS.get(order.plan)
-
             if not plan:
                 order.status = "error"
                 db.commit()
+                return {"received": True, "message": "Plan no encontrado"}
 
-                return {
-                    "received": True,
-                    "message": "Plan no encontrado"
-                }
-
-            # Crear API KEY
-            new_api_key = (
-                "plk_live_" +
-                secrets.token_urlsafe(32)
-            )
-
+            new_api_key = "plk_live_" + secrets.token_urlsafe(32)
             account = APIKey(
                 key=new_api_key,
                 plan=order.plan,
@@ -553,18 +471,13 @@ async def stripe_webhook(request: Request):
             )
 
             db.add(account)
-
             order.status = "paid"
             order.api_key = new_api_key
-
             db.commit()
-
         finally:
             db.close()
 
-    return {
-        "received": True
-    }
+    return {"received": True}
 
 # ============================================================
 # ADMIN
@@ -573,9 +486,7 @@ async def stripe_webhook(request: Request):
 @app.get("/admin/stats")
 def admin_stats(request: Request):
 
-    provided_key = request.headers.get(
-        "X-Admin-Key"
-    )
+    provided_key = request.headers.get("X-Admin-Key")
 
     if not ADMIN_KEY:
         raise HTTPException(
@@ -592,7 +503,6 @@ def admin_stats(request: Request):
     db = SessionLocal()
 
     try:
-
         accounts = db.query(APIKey).count()
         orders = db.query(Order).count()
         paid_orders = db.query(Order).filter(
